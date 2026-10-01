@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>All Issues - Site Issue Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="inner">
+      <p class="brand">Site Issue Tracker <small>Report, track and resolve site problems</small></p>
+      <nav class="menu">
+        <a href="index.html">Report Issue</a>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="records.html" class="active">All Issues</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <h1>All issues</h1>
+    <p class="lead">Search and filter issues. Decision makers can change the status and add a note on what was done.</p>
+
+    <div id="msg" class="msg"></div>
+
+    <section class="card">
+      <div class="filters">
+        <div><label for="fSearch">Search</label><input id="fSearch" type="search" placeholder="Type a word..."></div>
+        <div><label for="fStatus">Status</label><select id="fStatus"></select></div>
+        <div><label for="fUrgency">Urgency</label><select id="fUrgency"></select></div>
+        <div><label for="fLocation">Location</label><select id="fLocation"></select></div>
+        <div><label for="fCategory">Type</label><select id="fCategory"></select></div>
+        <div><label for="fSort">Sort by</label>
+          <select id="fSort">
+            <option value="new">Newest first</option>
+            <option value="old">Oldest first</option>
+            <option value="urgent">Most urgent first</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <div class="toolbar">
+      <span class="count" id="count">Loading...</span>
+      <span>
+        <button class="btn secondary" id="clearBtn" type="button">Clear filters</button>
+        <button class="btn secondary" id="csvBtn" type="button">⬇ Download CSV</button>
+      </span>
+    </div>
+
+    <div id="list"><p class="empty">Loading...</p></div>
+  </main>
+
+  <footer>All data in this tool is made up for training purposes.</footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    fillSelect("fStatus", STATUSES, "All statuses");
+    fillSelect("fUrgency", URGENCIES, "All urgencies");
+    fillSelect("fLocation", LOCATIONS, "All locations");
+    fillSelect("fCategory", CATEGORIES, "All types");
+
+    let allRows = [];
+    let shownRows = [];
+    const RANK = { High: 0, Medium: 1, Low: 2 };
+
+    // Allow links like records.html?status=Open
+    const params = new URLSearchParams(location.search);
+    ["status", "urgency", "location", "category"].forEach(function (k) {
+      const el = document.getElementById("f" + k.charAt(0).toUpperCase() + k.slice(1));
+      if (params.get(k)) el.value = params.get(k);
+    });
+
+    function applyFilters() {
+      const q = document.getElementById("fSearch").value.trim().toLowerCase();
+      const fs = document.getElementById("fStatus").value;
+      const fu = document.getElementById("fUrgency").value;
+      const fl = document.getElementById("fLocation").value;
+      const fc = document.getElementById("fCategory").value;
+      const sort = document.getElementById("fSort").value;
+
+      shownRows = allRows.filter(function (r) {
+        if (fs && r.status !== fs) return false;
+        if (fu && r.urgency !== fu) return false;
+        if (fl && r.location !== fl) return false;
+        if (fc && r.category !== fc) return false;
+        if (q) {
+          const text = [r.title, r.description, r.location, r.category, r.reported_by, r.action_note].join(" ").toLowerCase();
+          if (text.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+
+      shownRows.sort(function (a, b) {
+        if (sort === "old") return new Date(a.created_at) - new Date(b.created_at);
+        if (sort === "urgent") {
+          const d = (a.status === "Resolved") - (b.status === "Resolved") || RANK[a.urgency] - RANK[b.urgency];
+          if (d) return d;
+        }
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+
+      document.getElementById("count").textContent = "Showing " + shownRows.length + " of " + allRows.length + " issues";
+      renderList();
+    }
+
+    function renderList() {
+      const list = document.getElementById("list");
+      if (!shownRows.length) {
+        list.innerHTML = '<p class="empty">No issues match these filters.</p>';
+        return;
+      }
+      list.innerHTML = shownRows.map(function (r) {
+        const opts = STATUSES.map(function (s) {
+          return '<option' + (s === r.status ? " selected" : "") + ">" + esc(s) + "</option>";
+        }).join("");
+        return '<article class="record ' + esc(r.urgency) + '" data-id="' + esc(r.id) + '">' +
+          "<h3>" + esc(r.title) + "</h3>" +
+          '<div><span class="badge ' + cls(r.urgency) + '">' + esc(r.urgency) + "</span> " +
+          '<span class="badge ' + cls(r.status) + '">' + esc(r.status) + "</span> " +
+          '<span class="badge cat">' + esc(r.category) + "</span></div>" +
+          '<div class="meta"><span>📍 ' + esc(r.location) + "</span>" +
+          "<span>🕒 Reported " + esc(niceDate(r.created_at)) + "</span>" +
+          (r.reported_by ? "<span>👤 " + esc(r.reported_by) + "</span>" : "") + "</div>" +
+          (r.description ? '<p class="desc">' + esc(r.description) + "</p>" : "") +
+          (r.action_note ? '<p class="desc"><strong>Action:</strong> ' + esc(r.action_note) + "</p>" : "") +
+          '<div class="update">' +
+            '<div><label>Status</label><select class="u-status">' + opts + "</select></div>" +
+            '<div><label>Action taken / note</label><input class="u-note" maxlength="300" value="' + esc(r.action_note || "") + '" placeholder="What was done?"></div>' +
+            '<button class="btn u-save" type="button">Save</button>' +
+          "</div>" +
+          '<div class="msg u-msg"></div>' +
+        "</article>";
+      }).join("");
+    }
+
+    // Save a status change
+    document.getElementById("list").addEventListener("click", async function (ev) {
+      const btn = ev.target.closest(".u-save");
+      if (!btn) return;
+      const card = btn.closest(".record");
+      const id = card.getAttribute("data-id");
+      const msgBox = card.querySelector(".u-msg");
+      const changes = {
+        status: card.querySelector(".u-status").value,
+        action_note: card.querySelector(".u-note").value.trim() || null
+      };
+      btn.disabled = true; btn.textContent = "Saving...";
+      try {
+        if (!db) throw new Error(dbProblem);
+        const { data, error } = await db.from(TABLE).update(changes).eq("id", id).select();
+        if (error) throw error;
+        if (!data || !data.length) throw new Error("No row was updated. The UPDATE permission may be missing in the database.");
+        const row = allRows.find(function (r) { return r.id === id; });
+        Object.assign(row, data[0]);
+        applyFilters();
+        const newCard = document.querySelector('.record[data-id="' + id + '"] .u-msg');
+        if (newCard) { newCard.className = "msg u-msg show ok"; newCard.textContent = "Saved."; }
+      } catch (e) {
+        msgBox.className = "msg u-msg show err";
+        msgBox.textContent = "Sorry, the change could not be saved.";
+        const code = document.createElement("code");
+        code.textContent = "Error details: " + errText(e);
+        msgBox.appendChild(code);
+        btn.disabled = false; btn.textContent = "Save";
+      }
+    });
+
+    // Download the shown rows as a CSV file (opens in Excel)
+    document.getElementById("csvBtn").addEventListener("click", function () {
+      const cols = ["created_at", "title", "category", "location", "urgency", "status", "description", "reported_by", "action_note", "updated_at"];
+      const lines = [cols.join(",")].concat(shownRows.map(function (r) {
+        return cols.map(function (c) { return '"' + String(r[c] == null ? "" : r[c]).replace(/"/g, '""') + '"'; }).join(",");
+      }));
+      const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "issues-" + new Date().toISOString().slice(0, 10) + ".csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById("clearBtn").addEventListener("click", function () {
+      ["fSearch", "fStatus", "fUrgency", "fLocation", "fCategory"].forEach(function (id) { document.getElementById(id).value = ""; });
+      document.getElementById("fSort").value = "new";
+      applyFilters();
+    });
+    ["fSearch", "fStatus", "fUrgency", "fLocation", "fCategory", "fSort"].forEach(function (id) {
+      document.getElementById(id).addEventListener(id === "fSearch" ? "input" : "change", applyFilters);
+    });
+
+    (async function () {
+      try {
+        allRows = await loadIssues();
+        applyFilters();
+      } catch (e) {
+        showMsg("msg", "err", "Sorry, the issues could not be loaded.", errText(e));
+        document.getElementById("count").textContent = "";
+        document.getElementById("list").innerHTML = "";
+      }
+    })();
+  </script>
+</body>
+</html>
