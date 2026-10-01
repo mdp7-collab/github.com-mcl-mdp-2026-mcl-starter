@@ -78,3 +78,9 @@
  Next step: Data Keeper runs database/01-setup.sql in the Supabase SQL
  Editor, then paste the Project URL and publishable key into config.js and
  test on the live website.
+- Phase 1b (builder: Claude): Fixed missing quote marks in config.js.
+ Dashboard now has a "Latest entries" list (5 newest) and refreshes by
+ itself every 30 seconds, so new reports appear without clicking Refresh.
+ What works: tested with a pretend database. Known problems: the Webpack
+ GitHub check fails (project has no npm); delete .github/workflows/webpack.yml.
+ Next step: Data Keeper runs database/01-setup.sql in Supabase, then test live.
