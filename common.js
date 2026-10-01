@@ -48,9 +48,13 @@ let dbProblem = "";
 try {
   if (!window.supabase) {
     dbProblem = "The Supabase library did not load. Check the internet connection.";
-  } else if (!window.SUPABASE_URL || window.SUPABASE_URL.indexOf("PASTE_") === 0 ||
-             !window.SUPABASE_PUBLISHABLE_KEY || window.SUPABASE_PUBLISHABLE_KEY.indexOf("PASTE_") === 0) {
-    dbProblem = "The database settings are not filled in yet. Put the Project URL and publishable key in config.js.";
+  } else if (typeof window.SUPABASE_URL === "undefined" && typeof window.SUPABASE_PUBLISHABLE_KEY === "undefined") {
+    dbProblem = "config.js did not load or has a typing mistake (for example missing quote marks). " +
+                "Open config.js and check both lines look like: window.SUPABASE_URL = \"https://....supabase.co\";";
+  } else if (!window.SUPABASE_URL || String(window.SUPABASE_URL).indexOf("PASTE_") === 0 ||
+             !window.SUPABASE_PUBLISHABLE_KEY || String(window.SUPABASE_PUBLISHABLE_KEY).indexOf("PASTE_") === 0) {
+    dbProblem = "The database settings are not filled in yet. Put the Project URL and publishable key in config.js. " +
+                "(The website is reading: URL = " + window.SUPABASE_URL + ")";
   } else {
     db = window.supabase.createClient(window.SUPABASE_URL,
                                       window.SUPABASE_PUBLISHABLE_KEY);
