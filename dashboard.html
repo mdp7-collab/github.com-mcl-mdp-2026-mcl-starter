@@ -42,6 +42,12 @@
       <ul class="urgent-list" id="urgentList"><li class="empty">Loading...</li></ul>
     </section>
 
+    <section class="card">
+      <h2>🆕 Latest entries</h2>
+      <p class="lead" style="margin-top:-6px">The 5 newest reports. This page refreshes by itself every 30 seconds.</p>
+      <ul class="urgent-list" id="latestList"><li class="empty">Loading...</li></ul>
+    </section>
+
     <section class="charts">
       <div class="card"><h2>Issues by status</h2><div class="chart-box"><canvas id="cStatus"></canvas></div></div>
       <div class="card"><h2>Open work by urgency</h2><div class="chart-box"><canvas id="cUrgency"></canvas></div></div>
@@ -108,6 +114,15 @@
           esc(r.location) + " · " + (days === 0 ? "today" : days + " day" + (days === 1 ? "" : "s") + " old") + "</li>";
       }).join("") : '<li class="empty">🎉 No high urgency issues waiting. Well done!</li>';
 
+      // Latest entries (rows already come newest first)
+      const latest = rows.slice(0, 5);
+      document.getElementById("latestList").innerHTML = latest.length ? latest.map(function (r) {
+        return "<li><strong>" + esc(r.title) + "</strong><br>" +
+          '<span class="badge ' + cls(r.urgency) + '">' + esc(r.urgency) + "</span> " +
+          '<span class="badge ' + cls(r.status) + '">' + esc(r.status) + "</span> " +
+          esc(r.location) + " · " + esc(niceDate(r.created_at)) + "</li>";
+      }).join("") : '<li class="empty">No issues reported yet. Use the Report Issue page to add one.</li>';
+
       // Charts
       drawChart("cStatus", "doughnut", STATUSES, STATUSES.map(function (s) { return st[s]; }), STATUSES.map(function (s) { return COLORS[s]; }));
 
@@ -154,6 +169,7 @@
         showMsg("msg", "err", "Sorry, the dashboard could not load the data.", errText(e));
         document.getElementById("updated").textContent = "Could not load data.";
         document.getElementById("urgentList").innerHTML = '<li class="empty">No data.</li>';
+        document.getElementById("latestList").innerHTML = '<li class="empty">No data.</li>';
       } finally {
         btn.disabled = false;
       }
@@ -161,6 +177,8 @@
 
     document.getElementById("refreshBtn").addEventListener("click", refresh);
     refresh();
+    // Pick up new entries automatically (only while the page is on screen)
+    setInterval(function () { if (!document.hidden) refresh(); }, 30000);
   </script>
 </body>
 </html>
