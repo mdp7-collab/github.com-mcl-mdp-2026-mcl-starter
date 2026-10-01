@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard - Site Issue Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="inner">
+      <p class="brand">Site Issue Tracker <small>Report, track and resolve site problems</small></p>
+      <nav class="menu">
+        <a href="index.html">Report Issue</a>
+        <a href="dashboard.html" class="active">Dashboard</a>
+        <a href="records.html">All Issues</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <h1>Dashboard</h1>
+    <div class="toolbar">
+      <p class="lead" id="updated" style="margin:0">Loading...</p>
+      <button class="btn secondary" id="refreshBtn" type="button">↻ Refresh</button>
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <section class="kpis">
+      <div class="kpi"><div class="num" id="kTotal">–</div><div class="lbl">Total issues</div></div>
+      <div class="kpi red"><div class="num" id="kOpen">–</div><div class="lbl">Open</div></div>
+      <div class="kpi amber"><div class="num" id="kProg">–</div><div class="lbl">In progress</div></div>
+      <div class="kpi green"><div class="num" id="kDone">–</div><div class="lbl">Resolved</div></div>
+      <div class="kpi red"><div class="num" id="kHigh">–</div><div class="lbl">High urgency, not resolved</div></div>
+      <div class="kpi"><div class="num" id="kRate">–</div><div class="lbl">Resolution rate</div></div>
+    </section>
+
+    <section class="card">
+      <h2>🔴 Needs attention now</h2>
+      <p class="lead" style="margin-top:-6px">High urgency issues that are not resolved yet, oldest first.</p>
+      <ul class="urgent-list" id="urgentList"><li class="empty">Loading...</li></ul>
+    </section>
+
+    <section class="charts">
+      <div class="card"><h2>Issues by status</h2><div class="chart-box"><canvas id="cStatus"></canvas></div></div>
+      <div class="card"><h2>Open work by urgency</h2><div class="chart-box"><canvas id="cUrgency"></canvas></div></div>
+      <div class="card"><h2>Issues by location</h2><div class="chart-box"><canvas id="cLocation"></canvas></div></div>
+      <div class="card"><h2>Issues by type</h2><div class="chart-box"><canvas id="cCategory"></canvas></div></div>
+    </section>
+    <section class="card">
+      <h2>New issues reported (last 30 days)</h2>
+      <div class="chart-box"><canvas id="cTrend"></canvas></div>
+    </section>
+  </main>
+
+  <footer>All data in this tool is made up for training purposes.</footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="common.js"></script>
+  <script>
+    const COLORS = { Open: "#c62828", "In progress": "#c77700", Resolved: "#2e7d32", Low: "#2e7d32", Medium: "#c77700", High: "#c62828" };
+    const charts = {};
+
+    function countBy(rows, key, order) {
+      const out = {};
+      (order || []).forEach(function (k) { out[k] = 0; });
+      rows.forEach(function (r) { const k = r[key] || "Other"; out[k] = (out[k] || 0) + 1; });
+      return out;
+    }
+
+    function drawChart(id, type, labels, data, colors, extra) {
+      if (!window.Chart) return;
+      if (charts[id]) charts[id].destroy();
+      charts[id] = new Chart(document.getElementById(id), Object.assign({
+        type: type,
+        data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderColor: colors, borderWidth: type === "line" ? 2 : 0, fill: false, tension: .25 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: type === "doughnut", position: "bottom" } },
+          scales: type === "doughnut" ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      }, extra || {}));
+    }
+
+    function render(rows) {
+      const st = countBy(rows, "status", STATUSES);
+      const total = rows.length;
+      const notDone = rows.filter(function (r) { return r.status !== "Resolved"; });
+      const highOpen = notDone.filter(function (r) { return r.urgency === "High"; });
+
+      document.getElementById("kTotal").textContent = total;
+      document.getElementById("kOpen").textContent = st["Open"];
+      document.getElementById("kProg").textContent = st["In progress"];
+      document.getElementById("kDone").textContent = st["Resolved"];
+      document.getElementById("kHigh").textContent = highOpen.length;
+      document.getElementById("kRate").textContent = total ? Math.round(st["Resolved"] * 100 / total) + "%" : "–";
+
+      // Urgent list
+      const list = document.getElementById("urgentList");
+      const urgent = highOpen.slice().sort(function (a, b) { return new Date(a.created_at) - new Date(b.created_at); }).slice(0, 8);
+      list.innerHTML = urgent.length ? urgent.map(function (r) {
+        const days = Math.floor((Date.now() - new Date(r.created_at)) / 86400000);
+        return "<li><strong>" + esc(r.title) + "</strong><br>" +
+          '<span class="badge ' + cls(r.status) + '">' + esc(r.status) + "</span> " +
+          esc(r.location) + " · " + (days === 0 ? "today" : days + " day" + (days === 1 ? "" : "s") + " old") + "</li>";
+      }).join("") : '<li class="empty">🎉 No high urgency issues waiting. Well done!</li>';
+
+      // Charts
+      drawChart("cStatus", "doughnut", STATUSES, STATUSES.map(function (s) { return st[s]; }), STATUSES.map(function (s) { return COLORS[s]; }));
+
+      const ug = countBy(notDone, "urgency", URGENCIES);
+      drawChart("cUrgency", "bar", URGENCIES, URGENCIES.map(function (u) { return ug[u]; }), URGENCIES.map(function (u) { return COLORS[u]; }));
+
+      const loc = countBy(rows, "location");
+      const locKeys = Object.keys(loc).sort(function (a, b) { return loc[b] - loc[a]; });
+      drawChart("cLocation", "bar", locKeys, locKeys.map(function (k) { return loc[k]; }), "#1f6fb2", { options: {
+        indexAxis: "y", responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+      } });
+
+      const cat = countBy(rows, "category");
+      const catKeys = Object.keys(cat).sort(function (a, b) { return cat[b] - cat[a]; });
+      drawChart("cCategory", "bar", catKeys, catKeys.map(function (k) { return cat[k]; }), "#12395c");
+
+      // Trend: last 30 days
+      const days = [], counts = [];
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(today); d.setDate(d.getDate() - i);
+        days.push(d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }));
+        counts.push(0);
+      }
+      rows.forEach(function (r) {
+        const d = new Date(r.created_at); d.setHours(0, 0, 0, 0);
+        const idx = 29 - Math.round((today - d) / 86400000);
+        if (idx >= 0 && idx < 30) counts[idx]++;
+      });
+      drawChart("cTrend", "line", days, counts, "#1f6fb2");
+    }
+
+    async function refresh() {
+      hideMsg("msg");
+      const btn = document.getElementById("refreshBtn");
+      btn.disabled = true;
+      try {
+        if (!window.Chart) showMsg("msg", "info", "Charts could not load (Chart.js missing). Numbers below still work.");
+        const rows = await loadIssues();
+        render(rows);
+        document.getElementById("updated").textContent = "Last updated: " + niceDate(new Date().toISOString());
+      } catch (e) {
+        showMsg("msg", "err", "Sorry, the dashboard could not load the data.", errText(e));
+        document.getElementById("updated").textContent = "Could not load data.";
+        document.getElementById("urgentList").innerHTML = '<li class="empty">No data.</li>';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    refresh();
+  </script>
+</body>
+</html>

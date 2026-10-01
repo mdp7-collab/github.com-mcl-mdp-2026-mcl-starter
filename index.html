@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Report an Issue - Site Issue Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="inner">
+      <p class="brand">Site Issue Tracker <small>Report, track and resolve site problems</small></p>
+      <nav class="menu">
+        <a href="index.html" class="active">Report Issue</a>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="records.html">All Issues</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <h1>Report an issue</h1>
+    <p class="lead">Fill this short form. It takes less than a minute. Fields marked * are required.</p>
+
+    <div id="msg" class="msg"></div>
+
+    <form id="issueForm" class="card" novalidate>
+      <label for="title">What is the problem? *</label>
+      <input id="title" name="title" maxlength="120" placeholder="e.g. Pothole on haul road bend" required>
+
+      <label for="category">Type of problem *</label>
+      <select id="category" name="category" required></select>
+
+      <label for="location">Location *</label>
+      <select id="location" name="location" required></select>
+
+      <label>How urgent is it? *</label>
+      <div class="choice-row" role="radiogroup" aria-label="Urgency">
+        <label><input type="radio" name="urgency" value="Low"><span>🟢 Low</span></label>
+        <label><input type="radio" name="urgency" value="Medium" checked><span>🟠 Medium</span></label>
+        <label><input type="radio" name="urgency" value="High"><span>🔴 High</span></label>
+      </div>
+
+      <label for="description">More details <span class="hint">(optional)</span></label>
+      <textarea id="description" name="description" maxlength="1000" placeholder="What did you see? Since when?"></textarea>
+
+      <label for="reported_by">Reported by <span class="hint">(your role or team only, no names)</span></label>
+      <input id="reported_by" name="reported_by" maxlength="60" placeholder="e.g. Shift B supervisor">
+
+      <button type="submit" id="submitBtn" class="btn full">Submit issue</button>
+    </form>
+
+    <p style="text-align:center"><a class="btn secondary" href="records.html">See all reported issues</a></p>
+  </main>
+
+  <footer>All data in this tool is made up for training purposes.</footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    fillSelect("category", CATEGORIES, "-- Choose type --");
+    fillSelect("location", LOCATIONS, "-- Choose location --");
+    if (!db) showMsg("msg", "err", "The tool cannot reach the database right now.", dbProblem);
+
+    const form = document.getElementById("issueForm");
+    const btn = document.getElementById("submitBtn");
+
+    form.addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      hideMsg("msg");
+
+      const record = {
+        title: form.title.value.trim(),
+        category: form.category.value,
+        location: form.location.value,
+        urgency: form.querySelector('input[name="urgency"]:checked').value,
+        status: "Open",
+        description: form.description.value.trim() || null,
+        reported_by: form.reported_by.value.trim() || null
+      };
+
+      // Check required fields
+      const missing = [];
+      if (!record.title) missing.push("the problem");
+      if (!record.category) missing.push("type of problem");
+      if (!record.location) missing.push("location");
+      if (missing.length) {
+        showMsg("msg", "err", "Please fill in: " + missing.join(", ") + ".");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (!db) {
+        showMsg("msg", "err", "Could not save. The tool cannot reach the database.", dbProblem);
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "Saving...";
+      try {
+        const { error } = await db.from(TABLE).insert(record);
+        if (error) throw error;
+        showMsg("msg", "ok", "Thank you! Your issue has been saved. You can see it on the Dashboard and All Issues pages.");
+        form.reset();
+      } catch (e) {
+        showMsg("msg", "err", "Sorry, the issue could not be saved. Please try again.", errText(e));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Submit issue";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  </script>
+</body>
+</html>
